@@ -8,11 +8,18 @@ import pulsar
 import re
 from pathlib import Path
 
-# Configuration
-PULSAR_URL = "pulsar://localhost:6650"
-CAPTURE_DIR = "pulsar_backup"
-DOCKER_CONTAINER = "iterable-arm64-pulsar_standalone-1"
-MAX_MESSAGES_PER_TOPIC = 10000  # Increased from 1000
+# Load configuration
+with open('config.json', 'r') as f:
+    config = json.load(f)
+
+PULSAR_URL = config['pulsar']['url']
+CAPTURE_DIR = config['backup']['capture_dir']
+DOCKER_CONTAINER = config['docker']['container']
+MAX_MESSAGES_PER_TOPIC = config['backup']['max_messages_per_topic']
+TIMEOUT_MS = config['pulsar']['timeout_ms']
+RECEIVER_QUEUE_SIZE = config['pulsar']['receiver_queue_size']
+SYSTEM_TENANTS = config['system_resources']['tenants']
+SYSTEM_NAMESPACES = config['system_resources']['namespaces']
 
 # Create backup directory structure
 Path(f"{CAPTURE_DIR}/messages").mkdir(parents=True, exist_ok=True)
@@ -100,14 +107,14 @@ def capture_pulsar():
         reader = client.create_reader(
             topic,
             pulsar.MessageId.earliest,
-            receiver_queue_size=1000
+            receiver_queue_size=RECEIVER_QUEUE_SIZE
         )
         
         messages = []
         # Attempt to read up to MAX_MESSAGES_PER_TOPIC messages
         for _ in range(MAX_MESSAGES_PER_TOPIC):
             try:
-                msg = reader.read_next(timeout_millis=5000)
+                msg = reader.read_next(timeout_millis=TIMEOUT_MS)
                 try:
                     # Try to decode as UTF-8 but handle binary data
                     content = msg.data().decode('utf-8')
@@ -236,8 +243,7 @@ def delete_pulsar_resources():
         tenants.append(line.split()[1])
     
     # Skip system tenants
-    system_tenants = ["public", "pulsar", "system"]
-    user_tenants = [t for t in tenants if t not in system_tenants]
+    user_tenants = [t for t in tenants if t not in SYSTEM_TENANTS]
     
     print(f"Found {len(user_tenants)} non-system tenants: {', '.join(user_tenants)}")
     
@@ -250,8 +256,7 @@ def delete_pulsar_resources():
                 all_namespaces.append(line.split()[1])
     
     # Skip system namespaces
-    system_namespaces = ["public/default", "public/functions", "pulsar/system"]
-    user_namespaces = [ns for ns in all_namespaces if ns not in system_namespaces]
+    user_namespaces = [ns for ns in all_namespaces if ns not in SYSTEM_NAMESPACES]
     
     print(f"Found {len(user_namespaces)} non-system namespaces")
     
@@ -332,7 +337,7 @@ def print_all_messages():
         reader = client.create_reader(
             topic,
             pulsar.MessageId.earliest,
-            receiver_queue_size=1000
+            receiver_queue_size=RECEIVER_QUEUE_SIZE
         )
         
         message_count = 0
@@ -340,7 +345,7 @@ def print_all_messages():
         # Attempt to read up to MAX_MESSAGES_PER_TOPIC messages
         for _ in range(MAX_MESSAGES_PER_TOPIC):
             try:
-                msg = reader.read_next(timeout_millis=5000)
+                msg = reader.read_next(timeout_millis=TIMEOUT_MS)
                 try:
                     # Try to decode as UTF-8 but handle binary data
                     content = msg.data().decode('utf-8')
